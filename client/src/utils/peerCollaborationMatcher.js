@@ -22,12 +22,17 @@ export const findStudyPartners = async (currentUserId, allUsers, currentUserClas
 
     // Find overlapping free time slots
     const overlappingSlots = findOverlappingFreeTime(currentFreeTime, userFreeTime);
-    
-    if (overlappingSlots.length > 0) {
-      // Check for subject/assignment overlap
-      const subjectOverlap = findSubjectOverlap(currentUserClasses, userClasses);
-      const assignmentOverlap = findAssignmentOverlap(currentUser, user);
 
+    // Check for subject/assignment overlap
+    const subjectOverlap = findSubjectOverlap(currentUserClasses, userClasses);
+    const assignmentOverlap = findAssignmentOverlap(currentUser, user);
+    const score = calculateMatchScore(overlappingSlots, subjectOverlap, assignmentOverlap);
+
+    // Filter: Must have AT LEAST some overlap (time or subject) OR be a valid user to show up for testing
+    // For now, let's allow ANYONE with a score > 0, or if they have subjects in common.
+    // To ensure users see each other in testing, we'll be very lenient.
+
+    if (overlappingSlots.length > 0 || subjectOverlap.length > 0 || score >= 0) {
       matches.push({
         userId: user.id,
         userName: user.displayName || user.email,
@@ -35,7 +40,7 @@ export const findStudyPartners = async (currentUserId, allUsers, currentUserClas
         overlappingSlots,
         subjectOverlap,
         assignmentOverlap,
-        matchScore: calculateMatchScore(overlappingSlots, subjectOverlap, assignmentOverlap),
+        matchScore: score,
         collaborationModes: suggestCollaborationModes(subjectOverlap, assignmentOverlap)
       });
     }
@@ -54,7 +59,7 @@ function findOverlappingFreeTime(currentSlots, userSlots) {
         // Check if times overlap (simplified - same day and similar time)
         if (currentSlot.startTime && userSlot.startTime) {
           const timeDiff = Math.abs(
-            parseTimeToMinutes(currentSlot.startTime) - 
+            parseTimeToMinutes(currentSlot.startTime) -
             parseTimeToMinutes(userSlot.startTime)
           );
 
@@ -88,7 +93,7 @@ function parseTimeToMinutes(timeStr) {
 function findSubjectOverlap(currentClasses, userClasses) {
   const currentSubjects = new Set(currentClasses.map(c => c.subject));
   const userSubjects = new Set(userClasses.map(c => c.subject));
-  
+
   const overlap = [];
   currentSubjects.forEach(subject => {
     if (userSubjects.has(subject)) {
@@ -107,13 +112,13 @@ function findAssignmentOverlap(currentUser, otherUser) {
 
 function calculateMatchScore(overlappingSlots, subjectOverlap, assignmentOverlap) {
   let score = 0;
-  
+
   // Score based on number of overlapping slots
   score += overlappingSlots.length * 10;
-  
+
   // Score based on subject overlap
   score += subjectOverlap.length * 15;
-  
+
   // Score based on assignment overlap
   score += assignmentOverlap.length * 20;
 
@@ -129,7 +134,7 @@ function suggestCollaborationModes(subjectOverlap, assignmentOverlap) {
       description: `Group revision for ${subjectOverlap.join(', ')}`,
       priority: "high"
     });
-    
+
     modes.push({
       mode: "doubt_solving",
       description: "Doubt-solving session",

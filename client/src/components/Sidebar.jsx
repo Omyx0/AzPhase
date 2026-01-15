@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from "react-router-dom";
-import { auth } from "../firebase"; 
-import { signOut } from "firebase/auth"; 
+import { auth } from "../firebase";
+import { signOut } from "firebase/auth";
 import {
   LayoutDashboard,
   BarChart3,
@@ -11,7 +11,8 @@ import {
   X,
   Sun,
   Moon,
-  Calendar
+  Calendar,
+  BookOpen
 } from "lucide-react";
 
 // IMPORT IMAGES HERE
@@ -22,10 +23,9 @@ export default function Sidebar({ onLogout, isDark, setIsDark, sidebarOpen, setS
   const navigate = useNavigate();
 
   const linkClass = ({ isActive }) =>
-    `flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
-      isActive
-        ? "bg-blue-600 text-white"
-        : isDark
+    `flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${isActive
+      ? "bg-blue-600 text-white"
+      : isDark
         ? "text-gray-300 hover:bg-gray-700"
         : "text-gray-700 hover:bg-gray-100"
     }`;
@@ -51,38 +51,34 @@ export default function Sidebar({ onLogout, isDark, setIsDark, sidebarOpen, setS
         />
       )}
 
-      <aside className={`sticky top-0 h-screen overflow-y-auto w-64 transition-transform duration-300 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } ${
-        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      } border-r p-4 flex flex-col shadow-lg`}>
+      <aside className={`sticky top-0 h-screen overflow-y-auto w-64 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        } border-r p-4 flex flex-col shadow-lg`}>
 
         {/* Header with close button */}
         <div className="flex items-center justify-between mb-8">
-          
+
           {/* LOGO REPLACEMENT - Adjusted height to fix "tiny" issue */}
           <div className="flex items-center gap-2">
-            <img 
-              src={isDark ? logoDark : logoLight} 
-              alt="UniTime Logo" 
-              className="h-10 w-auto object-contain" 
+            <img
+              src={isDark ? logoDark : logoLight}
+              alt="UniTime Logo"
+              className="h-10 w-auto object-contain"
             />
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`p-2 rounded-lg transition-colors ${
-                isDark ? 'hover:bg-gray-700 text-yellow-400' : 'hover:bg-gray-100 text-gray-600'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-gray-700 text-yellow-400' : 'hover:bg-gray-100 text-gray-600'
+                }`}
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <button
               onClick={() => setSidebarOpen(false)}
-              className={`p-2 rounded-lg lg:hidden transition-colors ${
-                isDark ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'
-              }`}
+              className={`p-2 rounded-lg lg:hidden transition-colors ${isDark ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'
+                }`}
             >
               <X size={18} />
             </button>
@@ -99,7 +95,7 @@ export default function Sidebar({ onLogout, isDark, setIsDark, sidebarOpen, setS
           </NavLink>
 
           <NavLink to="/timetable" className={linkClass}>
-            <Calendar size={18} /> Timetable
+            <BookOpen size={18} /> Academic Documents
           </NavLink>
 
           <NavLink to="/profile" className={linkClass}>
@@ -113,11 +109,10 @@ export default function Sidebar({ onLogout, isDark, setIsDark, sidebarOpen, setS
 
         <button
           onClick={handleLogout}
-          className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
-            isDark
-              ? 'text-red-400 hover:bg-gray-700'
-              : 'text-red-600 hover:bg-red-50'
-          }`}
+          className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${isDark
+            ? 'text-red-400 hover:bg-gray-700'
+            : 'text-red-600 hover:bg-red-50'
+            }`}
         >
           <LogOut size={18} /> Logout
         </button>

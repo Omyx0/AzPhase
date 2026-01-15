@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Clock, Sparkles, Brain, Loader2, BookOpen 
+import {
+  Clock, Sparkles, Brain, Loader2, BookOpen
 } from "lucide-react";
-import { db, auth } from "../firebase"; 
+import { db, auth } from "../firebase";
 import { collection, query, onSnapshot, where } from "firebase/firestore";
-import { GoogleGenerativeAI } from "@google/generative-ai"; 
-import FocusTimer from './FocusTimer'; 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import FocusTimer from './FocusTimer';
 
 // --- NEW IMPORTS (Ensure these files exist from previous steps) ---
-import AcademicManager from './AcademicManager';
-import ClassroomSync from './ClassroomSync';
-import AIStudyAdvisor from './AIStudyAdvisor';
+
+
+
 import LearningContinuityDashboard from './LearningContinuityDashboard';
 import PeerCollaboration from './PeerCollaboration';
 import SmartNotifications from './SmartNotifications';
@@ -28,17 +28,17 @@ const UnifiedDashboard = ({ isDark }) => {
 
   // New State for "Plan Now" Feature
   const [planningId, setPlanningId] = useState(null);
-  const [aiPlans, setAiPlans] = useState({}); 
+  const [aiPlans, setAiPlans] = useState({});
 
   // Fetch real data from 'timetable' collection
   useEffect(() => {
     if (!auth.currentUser) return;
-    
+
     const q = query(collection(db, "timetable"), where("userId", "==", auth.currentUser.uid));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const classData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUpcomingClasses(classData);
-      
+
       const cancelledCount = classData.filter(c => c.isCancelled).length;
       setMetrics({
         active: classData.length - cancelledCount,
@@ -48,11 +48,11 @@ const UnifiedDashboard = ({ isDark }) => {
       // Detect free time slots
       const freeSlots = detectFreeTime(classData);
       setFreeTimeSlots(freeSlots);
-      
+
       // Get current free time
       const current = getCurrentFreeTime(classData);
       setCurrentFreeTime(current);
-      
+
       setLoading(false);
     });
 
@@ -79,8 +79,8 @@ const UnifiedDashboard = ({ isDark }) => {
 
   // --- HANDLE "PLAN NOW" WITH GEMINI ---
   const handlePlanFreeTime = async (cls) => {
-    setPlanningId(cls.id); 
-    
+    setPlanningId(cls.id);
+
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
@@ -103,7 +103,7 @@ const UnifiedDashboard = ({ isDark }) => {
       for (const modelName of modelCandidates) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName });
-          
+
           // Retry logic for rate limiting (429 errors)
           let retryCount = 0;
           const maxRetries = 2;
@@ -112,7 +112,7 @@ const UnifiedDashboard = ({ isDark }) => {
               const result = await model.generateContent(prompt);
               const response = await result.response;
               const text = response.text();
-              
+
               setAiPlans(prev => ({
                 ...prev,
                 [cls.id]: text || "Review your lecture notes and highlight key points."
@@ -138,21 +138,21 @@ const UnifiedDashboard = ({ isDark }) => {
           throw error; // Re-throw if last model or not quota error
         }
       }
-      
+
       // If we get here, all models failed
       throw lastError || new Error("All models failed");
 
     } catch (error) {
       console.error("AI Error:", error);
-      
+
       let errorMessage = "Failed to generate plan. Please try again later.";
-      
+
       if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('Quota')) {
         errorMessage = "⏱️ Free tier quota exceeded (20 requests/day). Please wait 24 hours or upgrade at https://console.cloud.google.com/billing/overview";
       } else if (error.message?.includes('API key') || error.message?.includes('401') || error.message?.includes('403')) {
         errorMessage = "❌ API key error. Please check your VITE_GEMINI_API_KEY configuration.";
       }
-      
+
       alert(errorMessage);
     } finally {
       setPlanningId(null);
@@ -167,7 +167,7 @@ const UnifiedDashboard = ({ isDark }) => {
   return (
     <div className={`min-h-screen p-6 ${theme}`}>
       <div className="max-w-6xl mx-auto space-y-8">
-        
+
         {/* HEADER */}
         <header className={`pb-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
           <div>
@@ -178,26 +178,11 @@ const UnifiedDashboard = ({ isDark }) => {
         </header>
 
         {/* --- NEW: SMART STUDY HUB SECTION --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           {/* Left Col: Classroom & Uploads */}
-           <div className="lg:col-span-2 space-y-6">
-              {/* 1. Google Classroom Sync */}
-              <ClassroomSync isDark={isDark} />
-              
-              {/* 2. Permanent Document Uploads */}
-              <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
-                 <div className="flex items-center gap-2 mb-6">
-                    <BookOpen className={`w-5 h-5 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
-                    <h2 className={`text-lg font-bold ${textPrimary}`}>Academic Documents</h2>
-                 </div>
-                 <AcademicManager isDark={isDark} />
-              </div>
-           </div>
-
-           {/* Right Col: Adaptive AI Advisor */}
-           <div className="lg:col-span-1">
-              <AIStudyAdvisor isDark={isDark} />
-           </div>
+        <div className="space-y-6">
+          <div className={`p-6 rounded-xl border shadow-sm ${card}`}>
+            <h2 className={`text-lg font-bold mb-4 ${textPrimary}`}>Classroom</h2>
+            <p className={`${textSecondary}`}>No classroom linked.</p>
+          </div>
         </div>
 
         {/* METRICS (Existing) */}
@@ -223,7 +208,7 @@ const UnifiedDashboard = ({ isDark }) => {
         {/* SCHEDULE LIST (Existing) */}
         <div>
           <h2 className={`text-lg font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Your Schedule</h2>
-          
+
           {loading ? (
             <div className={`text-center opacity-50 py-10 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               Loading schedule...
@@ -235,15 +220,13 @@ const UnifiedDashboard = ({ isDark }) => {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {upcomingClasses.map((cls) => (
-                <div key={cls.id} className={`p-5 rounded-xl border transition-all hover:shadow-md ${
-                  cls.isCancelled ? (isDark ? 'border-red-500/40 bg-red-500/5' : 'border-red-300 bg-red-50/50') : card
-                }`}>
-                  
+                <div key={cls.id} className={`p-5 rounded-xl border transition-all hover:shadow-md ${cls.isCancelled ? (isDark ? 'border-red-500/40 bg-red-500/5' : 'border-red-300 bg-red-50/50') : card
+                  }`}>
+
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">
-                      <h3 className={`font-bold text-lg mb-1 ${isDark ? 'text-white' : 'text-gray-900'} ${
-                        cls.isCancelled ? 'line-through opacity-60' : ''
-                      }`}>
+                      <h3 className={`font-bold text-lg mb-1 ${isDark ? 'text-white' : 'text-gray-900'} ${cls.isCancelled ? 'line-through opacity-60' : ''
+                        }`}>
                         {cls.subject}
                       </h3>
                       <div className={`flex items-center gap-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -260,9 +243,8 @@ const UnifiedDashboard = ({ isDark }) => {
                       </div>
                     </div>
                     {cls.isCancelled && (
-                      <span className={`ml-3 text-xs font-bold px-2.5 py-1 rounded ${
-                        isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
-                      }`}>
+                      <span className={`ml-3 text-xs font-bold px-2.5 py-1 rounded ${isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
+                        }`}>
                         CANCELLED
                       </span>
                     )}
@@ -270,10 +252,9 @@ const UnifiedDashboard = ({ isDark }) => {
 
                   {/* --- PLAN NOW SECTION (Existing) --- */}
                   {cls.isCancelled && (
-                    <div className={`mt-4 p-3 rounded-lg border ${
-                      isDark ? 'bg-red-900/10 border-red-500/20' : 'bg-red-50 border-red-100'
-                    }`}>
-                      
+                    <div className={`mt-4 p-3 rounded-lg border ${isDark ? 'bg-red-900/10 border-red-500/20' : 'bg-red-50 border-red-100'
+                      }`}>
+
                       {aiPlans[cls.id] ? (
                         <div className="animate-in fade-in">
                           <div className="flex items-center gap-2 mb-1.5">
@@ -299,8 +280,8 @@ const UnifiedDashboard = ({ isDark }) => {
                               </p>
                             </div>
                           </div>
-                          
-                          <button 
+
+                          <button
                             onClick={() => handlePlanFreeTime(cls)}
                             disabled={planningId === cls.id}
                             className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -339,9 +320,8 @@ const UnifiedDashboard = ({ isDark }) => {
               {freeTimeSlots.slice(0, 3).map((slot, idx) => {
                 const mappedGap = mapFreeTimeToGap(slot, academicGaps);
                 return (
-                  <div key={idx} className={`p-4 rounded-lg border ${
-                    isDark ? 'bg-indigo-900/20 border-indigo-700' : 'bg-indigo-50 border-indigo-200'
-                  }`}>
+                  <div key={idx} className={`p-4 rounded-lg border ${isDark ? 'bg-indigo-900/20 border-indigo-700' : 'bg-indigo-50 border-indigo-200'
+                    }`}>
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <p className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -356,11 +336,10 @@ const UnifiedDashboard = ({ isDark }) => {
                           </p>
                         )}
                       </div>
-                      <span className={`ml-3 text-xs px-2 py-1 rounded whitespace-nowrap ${
-                        slot.type === 'cancelled' 
-                          ? isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
-                          : isDark ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
-                      }`}>
+                      <span className={`ml-3 text-xs px-2 py-1 rounded whitespace-nowrap ${slot.type === 'cancelled'
+                        ? isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
+                        : isDark ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
+                        }`}>
                         {slot.type === 'cancelled' ? 'Cancelled' : 'Gap'}
                       </span>
                     </div>
@@ -381,11 +360,11 @@ const UnifiedDashboard = ({ isDark }) => {
         {/* FOCUS TIMER SECTION (Existing) */}
         <div className="mt-8 p-1 rounded-xl" style={{
           background: 'linear-gradient(to right, #4f46e5, #9333ea)',
-          padding: '2px' 
+          padding: '2px'
         }}>
-           <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
-              <FocusTimer isDark={isDark} />
-           </div>
+          <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
+            <FocusTimer isDark={isDark} />
+          </div>
         </div>
 
       </div>
