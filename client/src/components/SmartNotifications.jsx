@@ -15,6 +15,7 @@ const SmartNotifications = ({ isDark }) => {
   const [showPanel, setShowPanel] = useState(false);
   const [classes, setClasses] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [quizScores, setQuizScores] = useState([]);
   const panelRef = useRef(null);
 
   // Close panel when clicking outside
@@ -45,9 +46,9 @@ const SmartNotifications = ({ isDark }) => {
     const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
       const classData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClasses(classData);
-      
+
       // Check for new cancellations and generate notifications
-      checkForNewNotifications(classData, assignments);
+      checkForNewNotifications(classData, assignments, quizScores);
     });
 
     // Subscribe to assignments
@@ -60,6 +61,17 @@ const SmartNotifications = ({ isDark }) => {
       setAssignments(assignmentData);
     });
 
+    // Subscribe to quiz scores
+    const scoresQuery = query(
+      collection(db, "quiz_scores"),
+      where("userId", "==", auth.currentUser.uid)
+    );
+    const unsubscribeScores = onSnapshot(scoresQuery, (snapshot) => {
+      const scoreData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setQuizScores(scoreData);
+      // Re-check notifications with new score data? Optional.
+    });
+
     // Check for upcoming classes (every minute)
     const interval = setInterval(() => {
       checkUpcomingClasses(classes);
@@ -68,11 +80,12 @@ const SmartNotifications = ({ isDark }) => {
     return () => {
       unsubscribeClasses();
       unsubscribeAssignments();
+      unsubscribeScores();
       clearInterval(interval);
     };
-  }, [auth.currentUser, assignments]);
+  }, [auth.currentUser, assignments, quizScores]);
 
-  const checkForNewNotifications = async (classData, assignmentData) => {
+  const checkForNewNotifications = async (classData, assignmentData, scoreData) => {
     const newNotifications = [];
 
     // 1. Check for cancelled classes
@@ -80,12 +93,12 @@ const SmartNotifications = ({ isDark }) => {
     cancelledClasses.forEach(cls => {
       const freeTime = detectFreeTime([cls])[0];
       if (freeTime) {
-        analyzeAcademicGaps(null, assignmentData, classData, null).then(gaps => {
+        analyzeAcademicGaps(null, assignmentData, classData, scoreData).then(gaps => {
           const relevantGap = mapFreeTimeToGap(freeTime, gaps);
-          
+
           let message = `📅 Class cancelled: ${cls.subject} at ${cls.time}`;
           message += ` → ${freeTime.freeTimeDuration} min free`;
-          
+
           if (relevantGap) {
             message += ` → Revise ${relevantGap.subject || relevantGap.type}`;
             if (relevantGap.insight) {
@@ -119,16 +132,16 @@ const SmartNotifications = ({ isDark }) => {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    
+
     classData.forEach(cls => {
       if (cls.isCancelled) return;
-      
+
       const [time, period] = cls.time.split(' ');
       const [hours, minutes] = time.split(':').map(Number);
       let classHour = hours;
       if (period === 'PM' && hours !== 12) classHour += 12;
       if (period === 'AM' && hours === 12) classHour = 0;
-      
+
       const classMinutes = classHour * 60 + (minutes || 0);
       const nowMinutes = currentHour * 60 + currentMinute;
       const minutesUntil = classMinutes - nowMinutes;
@@ -156,7 +169,7 @@ const SmartNotifications = ({ isDark }) => {
       timestamp: new Date(),
       read: false
     };
-    
+
     setNotifications(prev => {
       // Avoid duplicates
       if (prev.find(n => n.message === newNotif.message && !n.read)) {
@@ -167,7 +180,7 @@ const SmartNotifications = ({ isDark }) => {
   };
 
   const markAsRead = (id) => {
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: true } : n)
     );
   };
@@ -189,9 +202,8 @@ const SmartNotifications = ({ isDark }) => {
     <div className="relative" ref={panelRef}>
       {/* Notification Bell */}
       <button
-        className={`relative p-2.5 rounded-lg ${theme.card} border transition-all hover:shadow-md ${
-          showPanel ? (isDark ? 'bg-indigo-900/30 border-indigo-600' : 'bg-indigo-50 border-indigo-300') : ''
-        }`}
+        className={`relative p-2.5 rounded-lg ${theme.card} border transition-all hover:shadow-md ${showPanel ? (isDark ? 'bg-indigo-900/30 border-indigo-600' : 'bg-indigo-50 border-indigo-300') : ''
+          }`}
         onClick={() => setShowPanel(!showPanel)}
         aria-label="Notifications"
       >
@@ -205,14 +217,13 @@ const SmartNotifications = ({ isDark }) => {
 
       {/* Notifications Panel */}
       {showPanel && (
-        <div className={`absolute right-0 mt-2 w-80 ${theme.card} border rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto ${
-          isDark ? 'border-gray-700' : 'border-gray-200'
-        }`}>
+        <div className={`absolute right-0 mt-2 w-80 ${theme.card} border rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto ${isDark ? 'border-gray-700' : 'border-gray-200'
+          }`}>
           <div className={`p-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
             <h3 className={`font-bold ${theme.text}`}>Notifications</h3>
             <span className={`text-xs ${theme.muted}`}>{unreadCount} unread</span>
           </div>
-          
+
           <div className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {notifications.length === 0 ? (
               <div className={`p-6 text-center ${theme.muted}`}>
@@ -221,51 +232,49 @@ const SmartNotifications = ({ isDark }) => {
               </div>
             ) : (
               notifications.map(notif => (
-              <div
-                key={notif.id}
-                className={`p-4 hover:${isDark ? 'bg-gray-700' : 'bg-gray-50'} transition-colors ${
-                  !notif.read ? (isDark ? 'bg-gray-700/50' : 'bg-blue-50/50') : ''
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-lg ${
-                    notif.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                    notif.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                    'bg-blue-500/20 text-blue-400'
-                  }`}>
-                    {notif.type === 'class_cancelled' && <AlertCircle className="w-4 h-4" />}
-                    {notif.type === 'upcoming_class' && <Clock className="w-4 h-4" />}
-                    {notif.type === 'gap_identified' && <BookOpen className="w-4 h-4" />}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className={`font-semibold text-sm ${theme.text}`}>{notif.title}</p>
-                        <p className={`text-xs mt-1 ${theme.muted}`}>{notif.message}</p>
-                        <p className={`text-xs mt-2 ${theme.muted}`}>
-                          {notif.timestamp.toLocaleTimeString()}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => dismissNotification(notif.id)}
-                        className={`p-1 rounded hover:${isDark ? 'bg-gray-600' : 'bg-gray-200'} transition-colors`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                <div
+                  key={notif.id}
+                  className={`p-4 hover:${isDark ? 'bg-gray-700' : 'bg-gray-50'} transition-colors ${!notif.read ? (isDark ? 'bg-gray-700/50' : 'bg-blue-50/50') : ''
+                    }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-lg ${notif.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                        notif.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                          'bg-blue-500/20 text-blue-400'
+                      }`}>
+                      {notif.type === 'class_cancelled' && <AlertCircle className="w-4 h-4" />}
+                      {notif.type === 'upcoming_class' && <Clock className="w-4 h-4" />}
+                      {notif.type === 'gap_identified' && <BookOpen className="w-4 h-4" />}
                     </div>
-                    
-                    {!notif.read && (
-                      <button
-                        onClick={() => markAsRead(notif.id)}
-                        className="mt-2 text-xs text-blue-500 hover:underline"
-                      >
-                        Mark as read
-                      </button>
-                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <p className={`font-semibold text-sm ${theme.text}`}>{notif.title}</p>
+                          <p className={`text-xs mt-1 ${theme.muted}`}>{notif.message}</p>
+                          <p className={`text-xs mt-2 ${theme.muted}`}>
+                            {notif.timestamp.toLocaleTimeString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => dismissNotification(notif.id)}
+                          className={`p-1 rounded hover:${isDark ? 'bg-gray-600' : 'bg-gray-200'} transition-colors`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {!notif.read && (
+                        <button
+                          onClick={() => markAsRead(notif.id)}
+                          className="mt-2 text-xs text-blue-500 hover:underline"
+                        >
+                          Mark as read
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
               ))
             )}
           </div>
