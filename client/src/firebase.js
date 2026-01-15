@@ -19,10 +19,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize Services
+export const googleProvider = new GoogleAuthProvider();
+// Permissions to view classes (roster for teachers, enrollment for students)
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const analytics = getAnalytics(app);
 export const storage = getStorage(app);
 
 // 2. Initialize and Export Google Provider (Fixes the error)
-export const googleProvider = new GoogleAuthProvider();

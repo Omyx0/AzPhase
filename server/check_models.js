@@ -6,18 +6,18 @@ dotenv.config();
 async function listModels() {
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
-    // Check available models
+    // Check available models for your API key
     console.log("Checking available models for your API key...");
-    // Note: The SDK doesn't always expose listModels directly easily, 
-    // so we will try a simple generation to test the most likely ones.
+    console.log("Testing valid stable models (as of 2025):\n");
     
+    // Valid stable models as of 2025
     const candidates = [
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-pro",
-        "gemini-pro"
+        "gemini-2.5-flash",        // Stable, fast, production-ready
+        "gemini-2.5-flash-lite",   // Stable, faster, cost-efficient
+        "gemini-2.5-pro",          // Stable, more capable
+        "gemini-1.5-flash",        // Older but still supported
+        "gemini-1.5-pro"           // Older but still supported
     ];
 
     for (const modelName of candidates) {

@@ -175,11 +175,11 @@ async function analyzeWithAI(fileBuffer, mimetype, availableTime, studentData) {
     promptParts.push(textPrompt);
 
     // --- TRY MODELS (Your Robust Fallback Loop) ---
+    // Valid stable models as of 2025: gemini-2.5-flash, gemini-2.5-flash-lite
+    // Updated based on API key availability - only 2.5 models work
     const candidates = [
-        "gemini-2.0-flash-lite", 
-        "gemini-2.5-flash",
-        "gemini-flash-latest",
-        "gemini-pro-vision"
+        "gemini-2.5-flash",        // Stable, fast, production-ready
+        "gemini-2.5-flash-lite"    // Stable, faster, cost-efficient
     ];
 
     for (const modelName of candidates) {

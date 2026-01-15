@@ -54,14 +54,34 @@ const Chatbot = ({ isDark }) => {
     setApiError(false);
 
     try {
-      // 2. Initialize the model - using experimental model (free tier)
-      const model = genAIRef.current.getGenerativeModel({ 
-        model: "gemini-2.0-flash-exp",
-        generationConfig: {
-          maxOutputTokens: 1024,
-          temperature: 0.7,
+      // 2. Initialize the model - using valid stable models with fallback
+      // Updated based on API key availability - only 2.5 models work
+      const modelCandidates = [
+        "gemini-2.5-flash",        // Stable, fast, production-ready
+        "gemini-2.5-flash-lite"    // Stable, faster, cost-efficient
+      ];
+      
+      let model;
+      let modelName;
+      for (const candidate of modelCandidates) {
+        try {
+          model = genAIRef.current.getGenerativeModel({ 
+            model: candidate,
+            generationConfig: {
+              maxOutputTokens: 1024,
+              temperature: 0.7,
+            }
+          });
+          modelName = candidate;
+          break;
+        } catch (error) {
+          console.log(`Model ${candidate} not available, trying next...`);
         }
-      });
+      }
+      
+      if (!model) {
+        throw new Error("No valid Gemini model available");
+      }
 
       // 3. Create a system prompt for UniTime AI persona
       const systemPrompt = `You are UniTime AI, a helpful and motivating academic assistant for students and teachers. Your role is to help with:
@@ -83,6 +103,7 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
       while (retryCount < maxRetries) {
         try {
           result = await model.generateContent(fullPrompt);
+          console.log(`✅ Successfully used model: ${modelName}`);
           break; // Success, exit retry loop
         } catch (error) {
           if (error.message.includes("429") && retryCount < maxRetries - 1) {
@@ -117,7 +138,9 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
       
       if (error.message.includes("429")) {
         errorMessage = "⏱️ Free tier quota exceeded. Please upgrade to a paid plan at https://console.cloud.google.com/billing/overview or wait until tomorrow for the quota to reset.";
-      } else if (error.message.includes("API key")) {
+      } else if (error.message.includes("404") || error.message.includes("not found") || error.message.includes("No valid Gemini model")) {
+        errorMessage = "❌ Invalid Gemini model. Please check your API key and ensure you have access to Gemini models.";
+      } else if (error.message.includes("API key") || error.message.includes("401") || error.message.includes("403")) {
         errorMessage = "❌ API key error. Please check your VITE_GEMINI_API_KEY configuration.";
       } else if (error.message.includes("network")) {
         errorMessage = "🌐 Network error. Please check your internet connection.";

@@ -42,8 +42,12 @@ exports.getSmartSchedule = async (req, res) => {
       return res.status(400).json({ error: "Available time is required" });
     }
 
-    // 3. FIX: Changed to 'gemini-pro' (Critical Fix)
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // 3. FIX: Using valid stable models (gemini-pro is retired)
+    // Updated based on API key availability - only 2.5 models work
+    const modelCandidates = [
+        "gemini-2.5-flash",        // Stable, fast, production-ready
+        "gemini-2.5-flash-lite"    // Stable, faster, cost-efficient
+    ];
 
     const prompt = `
       Act as an academic planner.
@@ -63,8 +67,28 @@ exports.getSmartSchedule = async (req, res) => {
       }
     `;
 
-    console.log("Sending to Gemini (gemini-pro)...");
-    const result = await model.generateContent(prompt);
+    let result;
+    let lastError;
+    for (const modelName of modelCandidates) {
+        try {
+            console.log(`🤖 Attempting AI Model: ${modelName}...`);
+            const model = genAI.getGenerativeModel({ model: modelName });
+            result = await model.generateContent(prompt);
+            console.log(`✅ Success with model: ${modelName}`);
+            break;
+        } catch (error) {
+            lastError = error;
+            if (error.message.includes('404') || error.message.includes('not found')) {
+                console.log(`🔹 Model ${modelName} not available, trying next...`);
+            } else {
+                console.warn(`❌ Error with ${modelName}:`, error.message.split('[')[0]);
+            }
+        }
+    }
+    
+    if (!result) {
+        throw new Error(`All models failed. Last error: ${lastError?.message}`);
+    }
     const response = await result.response;
     const text = response.text();
     
