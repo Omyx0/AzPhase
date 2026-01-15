@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { auth, db } from '../firebase'; 
-import { signInWithEmailAndPassword, signOut } from "firebase/auth"; 
-import { doc, getDoc } from "firebase/firestore"; 
+import { auth, db, googleProvider } from '../firebase'; 
+import { signInWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import logo from '../assets/4.png'; 
 
 const StudentLogin = ({ onLogin, onSwitchToSignup, onSwitchToTeacherLogin, onSwitchToLanding }) => {
@@ -20,29 +20,52 @@ const StudentLogin = ({ onLogin, onSwitchToSignup, onSwitchToTeacherLogin, onSwi
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(''); 
-
+  const handleGoogleLogin = async () => {
+    setError('');
     try {
-      // 1. Authenticate user credentials
-      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
-      const user = userCredential.user;
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
 
-      // 2. Fetch user role from Firestore
       const userDocRef = doc(db, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
+        if (userData.role !== "student") {
+          await signOut(auth);
+          setError("Access Denied: You are registered as a Teacher. Please use Teacher Login.");
+          return;
+        }
+        console.log('Student logged in via Google successfully');
+        onLogin(); 
+      } else {
+        await signOut(auth);
+        setError("Account not found. Please click 'Sign Up' to create a new account.");
+      }
+    } catch (err) {
+      console.error("Google Login Error:", err.message);
+      setError("Google Sign-In failed. Please try again.");
+    }
+  };
 
-        // 3. SECURITY CHECK: Is this user a Student?
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); 
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
+
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
         if (userData.role !== "student") {
           await signOut(auth);
           setError("Access Denied: This account is for Teachers only.");
           return;
         }
-
         console.log('Student logged in successfully');
         onLogin(); 
       } else {
@@ -66,6 +89,7 @@ const StudentLogin = ({ onLogin, onSwitchToSignup, onSwitchToTeacherLogin, onSwi
       <h2 className="text-xl font-bold text-gray-600 mb-1.25">Student Login</h2>
       <p className="text-gray-600 text-sm mb-6.25">Log in to manage your tasks and optimize your time</p>
 
+      {/* --- FORM MOVED TO TOP --- */}
       <form id="studentLoginForm" onSubmit={handleSubmit}>
         <div className="text-left mb-3.75">
           <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1.5">Email</label>
@@ -116,11 +140,29 @@ const StudentLogin = ({ onLogin, onSwitchToSignup, onSwitchToTeacherLogin, onSwi
         </button>
       </form>
 
-      <div className="mt-6.25 text-sm text-gray-800 pt-5 border-t border-gray-200">
+      {/* --- DIVIDER MOVED DOWN --- */}
+      <div className="relative flex py-2 items-center mt-4 mb-4">
+        <div className="flex-grow border-t border-gray-300"></div>
+        <span className="flex-shrink mx-4 text-gray-400 text-xs">OR</span>
+        <div className="flex-grow border-t border-gray-300"></div>
+      </div>
+
+      {/* --- GOOGLE BUTTON MOVED DOWN --- */}
+      <button 
+        onClick={handleGoogleLogin}
+        type="button"
+        className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+        Sign in with Google
+      </button>
+
+      {/* --- FOOTER LINKS --- */}
+      <div className="mt-6.25 text-sm text-gray-800 pt-5 border-t border-gray-200 mt-5">
         Don't have an account? <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToSignup(); }} className="text-[#7457d8] font-semibold no-underline hover:underline">Sign Up</a>
       </div>
 
-      <div className="mt-5 text-sm text-gray-800">
+      <div className="mt-3 text-sm text-gray-800">
         Are you a Teacher? <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToTeacherLogin(); }} className="text-blue-600 font-semibold no-underline mx-1.25 hover:text-[#7457d8]">Login as Teacher</a>
       </div>
     </div>

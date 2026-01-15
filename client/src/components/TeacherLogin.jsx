@@ -1,21 +1,55 @@
 import React, { useState } from 'react';
-import { auth, db } from '../firebase'; 
-import { signInWithEmailAndPassword, signOut } from "firebase/auth"; 
+import { auth, db, googleProvider } from '../firebase'; 
+import { signInWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth"; 
 import { doc, getDoc } from "firebase/firestore"; 
 import logo from '../assets/4.png'; 
 
 const TeacherLogin = ({ onLogin, onSwitchToSignup, onSwitchToStudentLogin, onSwitchToLanding }) => {
   const [formData, setFormData] = useState({
     email: '',
-    password: ''
+    password: '',
+    remember: false // Added state for remember me
   });
   const [error, setError] = useState(''); 
 
   const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: type === 'checkbox' ? checked : value
     });
+  };
+
+  // --- NEW: Handle Google Login for Teachers ---
+  const handleGoogleLogin = async () => {
+    setError('');
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // SECURITY CHECK: Is this user a Teacher?
+        if (userData.role !== "teacher") {
+          await signOut(auth);
+          setError("Access Denied: You are registered as a Student. Please use Student Login.");
+          return;
+        }
+
+        console.log('Teacher logged in via Google successfully');
+        onLogin(); 
+      } else {
+        await signOut(auth);
+        setError("Account not found. Please click 'Sign Up' to create a new account.");
+      }
+    } catch (err) {
+      console.error("Google Login Error:", err.message);
+      setError("Google Sign-In failed. Please try again.");
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -64,6 +98,7 @@ const TeacherLogin = ({ onLogin, onSwitchToSignup, onSwitchToStudentLogin, onSwi
       <h2 className="text-xl font-bold text-gray-600 mb-1.25">Teacher Login</h2>
       <p className="text-gray-600 text-sm mb-6.25">Log in to access your dashboard</p>
 
+      {/* --- FORM SECTION --- */}
       <form id="teacherLoginForm" onSubmit={handleSubmit}>
         <div className="text-left mb-3.75">
           <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1.5">Email</label>
@@ -92,6 +127,20 @@ const TeacherLogin = ({ onLogin, onSwitchToSignup, onSwitchToStudentLogin, onSwi
 
         {error && <div className="text-red-500 text-sm mb-3">{error}</div>}
 
+        {/* --- ADDED: Remember Me & Forgot Password --- */}
+        <div className="flex items-center justify-between mt-2.5 mb-3 text-sm text-gray-600">
+          <label className="flex items-center gap-1.5 whitespace-nowrap font-normal">
+            <input 
+              type="checkbox" 
+              name="remember" 
+              checked={formData.remember} 
+              onChange={handleChange} 
+              className="m-0 w-auto" 
+            /> Remember me
+          </label>
+          <a href="#" className="text-[#7457d8] hover:underline">Forgot password?</a>
+        </div>
+
         <button 
           type="submit" 
           className="w-full py-3 bg-[#012f7b] border-none text-white rounded-lg font-semibold text-base cursor-pointer transition-all hover:bg-[#01235a] hover:shadow-[0_6px_15px_rgba(1,47,123,0.2)]"
@@ -100,11 +149,29 @@ const TeacherLogin = ({ onLogin, onSwitchToSignup, onSwitchToStudentLogin, onSwi
         </button>
       </form>
 
-      <div className="mt-6.25 text-sm text-gray-800 pt-5 border-t border-gray-200">
+      {/* --- DIVIDER --- */}
+      <div className="relative flex py-2 items-center mt-4 mb-4">
+        <div className="flex-grow border-t border-gray-300"></div>
+        <span className="flex-shrink mx-4 text-gray-400 text-xs">OR</span>
+        <div className="flex-grow border-t border-gray-300"></div>
+      </div>
+
+      {/* --- GOOGLE BUTTON (MOVED DOWN) --- */}
+      <button 
+        onClick={handleGoogleLogin}
+        type="button"
+        className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+        Sign in with Google
+      </button>
+
+      {/* --- FOOTER LINKS --- */}
+      <div className="mt-6.25 text-sm text-gray-800 pt-5 border-t border-gray-200 mt-5">
         Don't have an account? <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToSignup(); }} className="text-[#7457d8] font-semibold no-underline hover:underline">Sign Up</a>
       </div>
 
-      <div className="mt-5 text-sm text-gray-800">
+      <div className="mt-3 text-sm text-gray-800">
         Are you a student? <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToStudentLogin(); }} className="text-blue-600 font-semibold no-underline mx-1.25 hover:text-[#7457d8]">Login as Student</a>
       </div>
     </div>

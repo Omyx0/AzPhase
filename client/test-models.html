@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Gemini Models</title>
+</head>
+<body>
+    <h1>Available Gemini Models</h1>
+    <div id="result">Loading...</div>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from 'https://esm.run/@google/generative-ai';
+
+        const API_KEY = 'AIzaSyAhfOqrmizAWtUfSFweObs_ScWmJnyuj1Y';
+        const genAI = new GoogleGenerativeAI(API_KEY);
+
+        const modelsToTry = [
+            'gemini-2.0-flash-exp',
+            'gemini-exp-1206',
+            'gemini-1.5-flash',
+            'gemini-1.5-pro',
+            'gemini-pro',
+        ];
+
+        async function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function testModels() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<h2>Testing Models (with delays to avoid rate limits):</h2>';
+            
+            for (let i = 0; i < modelsToTry.length; i++) {
+                const modelName = modelsToTry[i];
+                
+                resultDiv.innerHTML += `
+                    <div style="margin: 10px; padding: 10px; border: 1px solid orange; background: #fff3e0;">
+                        ⏳ <strong>Testing ${modelName}...</strong>
+                    </div>
+                `;
+                
+                try {
+                    const model = genAI.getGenerativeModel({ model: modelName });
+                    const result = await model.generateContent('Say "Hello" in one word');
+                    const text = result.response.text();
+                    
+                    resultDiv.innerHTML += `
+                        <div style="margin: 10px; padding: 10px; border: 3px solid green; background: #e8f5e9;">
+                            ✅ <strong>${modelName}</strong> - WORKS!<br>
+                            Response: "${text}"<br><br>
+                            <strong style="color: blue;">👉 USE THIS MODEL IN YOUR CHATBOT!</strong>
+                        </div>
+                    `;
+                    
+                    // Found working model - stop testing
+                    break;
+                    
+                } catch (error) {
+                    const errorMsg = error.message.substring(0, 200);
+                    resultDiv.innerHTML += `
+                        <div style="margin: 10px; padding: 10px; border: 1px solid red; background: #ffebee;">
+                            ❌ <strong>${modelName}</strong><br>
+                            ${errorMsg}
+                        </div>
+                    `;
+                }
+                
+                // Wait 3 seconds before next attempt
+                if (i < modelsToTry.length - 1) {
+                    resultDiv.innerHTML += `<p>⏳ Waiting 3 seconds before next test...</p>`;
+                    await sleep(3000);
+                }
+            }
+        }
+
+        testModels();
+    </script>
+</body>
+</html>

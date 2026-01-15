@@ -1,19 +1,38 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Send, Bot, User, Loader2, AlertCircle } from "lucide-react";
-// 👇 IMPORT CONFIG HERE (Isse backend ka sahi address milega)
-import { API_BASE_URL } from "../config"; 
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const Chatbot = ({ isDark }) => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
     { 
-      text: "Hello! I am your UniTime assistant. Class cancelled? Ask me for a study plan!", 
+      text: "Hello! I'm UniTime AI, your academic assistant. Ask me about study plans, schedules, or anything to boost your productivity! 🎓", 
       sender: "ai" 
     },
   ]);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(false);
   
   const messagesEndRef = useRef(null);
+  const genAIRef = useRef(null);
+
+  // Initialize Google Generative AI
+  useEffect(() => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      console.error("❌ VITE_GEMINI_API_KEY is not set in .env.local");
+      setApiError(true);
+      setMessages((prev) => [...prev, { 
+        text: "⚠️ API key not configured. Please set VITE_GEMINI_API_KEY in your .env.local file.", 
+        sender: "error" 
+      }]);
+      return;
+    }
+    
+    genAIRef.current = new GoogleGenerativeAI(apiKey);
+    console.log("✅ Gemini AI initialized successfully");
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -22,40 +41,90 @@ const Chatbot = ({ isDark }) => {
   useEffect(scrollToBottom, [messages, loading]);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || loading || !genAIRef.current) return;
 
-    // 1. User ka message add karo
+    // 1. Add user message
     const userMessage = { text: input, sender: "user" };
     setMessages((prev) => [...prev, userMessage]);
     
-    // Input clear aur loading start
+    // Clear input and start loading
+    const userInput = input;
     setInput("");
     setLoading(true);
+    setApiError(false);
 
     try {
-      console.log("📡 Sending to Backend:", `${API_BASE_URL}/api/chat`); // Debugging ke liye
-
-      // 2. Backend ko request bhejo (Using Config URL)
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: input }),
+      // 2. Initialize the model - using experimental model (free tier)
+      const model = genAIRef.current.getGenerativeModel({ 
+        model: "gemini-2.0-flash-exp",
+        generationConfig: {
+          maxOutputTokens: 1024,
+          temperature: 0.7,
+        }
       });
 
-      if (!response.ok) throw new Error("Backend connection failed");
+      // 3. Create a system prompt for UniTime AI persona
+      const systemPrompt = `You are UniTime AI, a helpful and motivating academic assistant for students and teachers. Your role is to help with:
+- Study planning and time management
+- Schedule organization
+- Motivation and academic guidance
+- Quick tips and productivity advice
 
-      const data = await response.json();
+Keep responses concise (2-3 sentences), friendly, and motivating. If asked about something unrelated to academics, politely redirect to academic topics.`;
+
+      // 4. Send message to Gemini API
+      const fullPrompt = `${systemPrompt}\n\nUser: ${userInput}`;
       
-      // 3. AI ka message add karo
+      let retryCount = 0;
+      const maxRetries = 3;
+      let result;
+
+      // Retry logic for rate limiting
+      while (retryCount < maxRetries) {
+        try {
+          result = await model.generateContent(fullPrompt);
+          break; // Success, exit retry loop
+        } catch (error) {
+          if (error.message.includes("429") && retryCount < maxRetries - 1) {
+            // Rate limited - wait and retry
+            const waitTime = Math.pow(2, retryCount) * 5000; // 5s, 10s, 20s
+            console.log(`Rate limited. Retrying in ${waitTime / 1000}s...`);
+            setMessages((prev) => [...prev, { 
+              text: `API rate limited. Retrying in ${waitTime / 1000}s...`, 
+              sender: "ai" 
+            }]);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            retryCount++;
+          } else {
+            throw error; // Not rate limited or max retries reached
+          }
+        }
+      }
+
+      const responseText = result.response.text();
+
+      // 5. Add AI response to messages
       const aiMessage = { 
-        text: data.text || "Sorry, I couldn't process that.", 
+        text: responseText || "Sorry, I couldn't generate a response. Please try again.", 
         sender: "ai" 
       };
       setMessages((prev) => [...prev, aiMessage]);
 
     } catch (error) {
       console.error("❌ Chat Error:", error);
-      setMessages((prev) => [...prev, { text: " Server error. check Backend is start or not?", sender: "error" }]);
+      
+      let errorMessage = "Oops! Something went wrong. Please try again.";
+      
+      if (error.message.includes("429")) {
+        errorMessage = "⏱️ Free tier quota exceeded. Please upgrade to a paid plan at https://console.cloud.google.com/billing/overview or wait until tomorrow for the quota to reset.";
+      } else if (error.message.includes("API key")) {
+        errorMessage = "❌ API key error. Please check your VITE_GEMINI_API_KEY configuration.";
+      } else if (error.message.includes("network")) {
+        errorMessage = "🌐 Network error. Please check your internet connection.";
+      }
+      
+      setMessages((prev) => [...prev, { text: errorMessage, sender: "error" }]);
+      setApiError(true);
     } finally {
       setLoading(false);
     }
@@ -71,8 +140,9 @@ const Chatbot = ({ isDark }) => {
         </div>
         <div>
           <h3 className="font-bold text-white text-lg">UniTime AI</h3>
-          <p className="text-indigo-200 text-xs flex items-center gap-1">
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Online
+          <p className={`text-indigo-200 text-xs flex items-center gap-1 ${apiError ? 'text-red-300' : ''}`}>
+            <span className={`w-2 h-2 rounded-full animate-pulse ${apiError ? 'bg-red-400' : 'bg-green-400'}`}></span>
+            {apiError ? 'Offline' : 'Online'}
           </p>
         </div>
       </div>
@@ -82,21 +152,21 @@ const Chatbot = ({ isDark }) => {
         {messages.map((msg, index) => (
           <div key={index} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
             {msg.sender === "ai" && (
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${isDark ? "bg-gray-700" : "bg-indigo-100"}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 flex-shrink-0 ${isDark ? "bg-gray-700" : "bg-indigo-100"}`}>
                     <Bot size={16} className={isDark ? "text-white" : "text-indigo-600"}/>
                 </div>
             )}
-            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+            <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${
               msg.sender === "user" 
                 ? "bg-indigo-600 text-white rounded-br-none" 
                 : msg.sender === "error"
-                ? "bg-red-100 text-red-600 border border-red-200"
+                ? "bg-red-100 text-red-700 border border-red-200 rounded-bl-none"
                 : isDark ? "bg-gray-800 text-gray-100 rounded-bl-none border border-gray-700" : "bg-white text-gray-800 rounded-bl-none shadow-sm border border-gray-100"
             }`}>
               {msg.text}
             </div>
             {msg.sender === "user" && (
-                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center ml-2 overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center ml-2 flex-shrink-0 overflow-hidden">
                     <User size={16} className="text-gray-600"/>
                 </div>
             )}
@@ -105,7 +175,7 @@ const Chatbot = ({ isDark }) => {
         
         {loading && (
           <div className="flex justify-start items-center">
-             <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${isDark ? "bg-gray-700" : "bg-indigo-100"}`}>
+             <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 flex-shrink-0 ${isDark ? "bg-gray-700" : "bg-indigo-100"}`}>
                     <Bot size={16} className={isDark ? "text-white" : "text-indigo-600"}/>
              </div>
              <div className={`px-4 py-2 rounded-full flex items-center gap-2 text-xs ${isDark ? "bg-gray-800 text-gray-400" : "bg-white text-gray-500"}`}>
@@ -125,11 +195,13 @@ const Chatbot = ({ isDark }) => {
           placeholder="Ask about your schedule..."
           className={`flex-1 text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all ${isDark ? "bg-gray-900 text-white placeholder-gray-500" : "bg-gray-100 text-gray-800 placeholder-gray-400"}`}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          disabled={loading || apiError}
         />
         <button 
             onClick={sendMessage} 
-            disabled={loading || !input.trim()}
+            disabled={loading || !input.trim() || apiError}
             className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/30"
+            title={apiError ? "API not configured" : "Send message"}
         >
           <Send size={18} />
         </button>

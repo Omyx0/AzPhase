@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { auth, db } from '../firebase'; 
-import { createUserWithEmailAndPassword } from "firebase/auth"; 
-import { doc, setDoc } from "firebase/firestore"; 
+import { auth, db, googleProvider } from '../firebase'; // Added googleProvider
+import { createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth"; // Added signInWithPopup
+import { doc, setDoc, getDoc } from "firebase/firestore"; // Added getDoc
 import { Loader2 } from "lucide-react";
 import logo from '../assets/4.png'; 
 
@@ -23,6 +23,70 @@ const Signup = ({ onSwitchToLogin, onSwitchToLanding }) => {
       [e.target.name]: e.target.value
     });
   };
+
+  // --- NEW: Google Signup Logic ---
+  const handleGoogleSignup = async () => {
+    setMessage('');
+    setIsError(false);
+    
+    try {
+      // 1. Google Popup
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      // 2. Check if user already exists
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        // User already has an account
+        setMessage('Account already exists. Logging you in...');
+        setTimeout(() => {
+           onSwitchToLogin(formData.role);
+        }, 1500);
+      } else {
+        // 3. Create NEW User Profile (using selected Role)
+        await setDoc(doc(db, "users", user.uid), {
+            uid: user.uid,
+            name: user.displayName || formData.name,
+            email: user.email,
+            role: formData.role, // Important: Use the role selected in UI
+            createdAt: new Date(),
+            phone: "",
+            location: "",
+            major: "",
+            year: "",
+            gpa: "",
+            photoURL: user.photoURL, // Save Google Photo
+            achievements: [],
+            goals: []
+        });
+
+        // 4. Initialize Settings
+        await setDoc(doc(db, "settings", user.uid), {
+            notifications: { reminders: true, deadlines: true, reports: false },
+            focus: { 
+                sessionDuration: formData.role === 'teacher' ? "60" : "25", 
+                breakDuration: "5", 
+                autoStart: true 
+            },
+            privacy: { shareUsage: false, hideActivities: true }
+        });
+
+        setIsError(false);
+        setMessage('Account created via Google!');
+        setTimeout(() => {
+            onSwitchToLogin(formData.role);
+        }, 1500);
+      }
+
+    } catch (error) {
+      console.error("Google Signup Error:", error);
+      setIsError(true);
+      setMessage("Google Signup failed. Please try again.");
+    }
+  };
+  // --------------------------------
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -153,7 +217,7 @@ const Signup = ({ onSwitchToLogin, onSwitchToLanding }) => {
           />
         </div>
         
-        {/* Role Selection */}
+        {/* Role Selection - Crucial for Google Signup too */}
         <div className="text-left">
           <label className="block text-sm font-semibold text-gray-800 mb-2">Select Role</label>
           <div className="grid grid-cols-2 gap-4">
@@ -198,6 +262,23 @@ const Signup = ({ onSwitchToLogin, onSwitchToLanding }) => {
           {loading ? "Creating Account..." : "Create Account"}
         </button>
       </form>
+
+      {/* --- DIVIDER --- */}
+      <div className="relative flex py-2 items-center mt-6 mb-4">
+        <div className="flex-grow border-t border-gray-300"></div>
+        <span className="flex-shrink mx-4 text-gray-400 text-xs">OR SIGN UP WITH</span>
+        <div className="flex-grow border-t border-gray-300"></div>
+      </div>
+
+      {/* --- GOOGLE BUTTON --- */}
+      <button 
+        onClick={handleGoogleSignup}
+        type="button"
+        className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+        Sign up with Google
+      </button>
 
       <div className="mt-6 text-sm text-gray-600 pt-5 border-t border-gray-200">
         Already have an account? <button onClick={() => onSwitchToLogin('student')} className="text-[#7457d8] font-semibold hover:underline bg-transparent border-none cursor-pointer">Login</button>

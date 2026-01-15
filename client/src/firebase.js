@@ -1,9 +1,9 @@
 // client/src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth"; // 1. Added GoogleAuthProvider here
 import { getAnalytics } from "firebase/analytics";
-import { getStorage } from "firebase/storage"; // Added for file uploads
+import { getStorage } from "firebase/storage"; 
 
 const firebaseConfig = {
   apiKey: "AIzaSyA4jbp9YpJPZZmcFhL7Pm75-TOzlNE_V8w",
@@ -18,8 +18,11 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Export services for use in your components
+// Initialize Services
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const analytics = getAnalytics(app);
-export const storage = getStorage(app); // Exported to support Timetable.jsx uploads
+export const storage = getStorage(app);
+
+// 2. Initialize and Export Google Provider (Fixes the error)
+export const googleProvider = new GoogleAuthProvider();
