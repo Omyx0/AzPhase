@@ -21,71 +21,69 @@ const PeerCollaboration = ({ isDark, classes }) => {
 
   // ... (existing useEffects) ...
 
-  // 1. Fetch Users & Classes (Existing Logic)
-  useEffect(() => {
-    if (!auth.currentUser || !classes) return;
-
-    const usersQuery = query(collection(db, "users"));
-    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAllUsers(users);
-
-      const classPromises = users.map(user =>
-        getDoc(doc(db, "timetable", user.id)).catch(() => null)
-      );
-
-      Promise.all(classPromises).then(classDocs => {
-        const classesMap = {};
-        classDocs.forEach((classDoc, index) => {
-          if (classDoc && classDoc.exists()) {
-            classesMap[users[index].id] = [classDoc.data()];
-          }
-        });
-
-        const timetableQuery = query(collection(db, "timetable"));
-        onSnapshot(timetableQuery, (timetableSnapshot) => {
-          const allTimetableClasses = timetableSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-
-          const timetableMap = {};
-          allTimetableClasses.forEach(cls => {
-            const userId = cls.userId || cls.teacherId;
-            if (userId) {
-              if (!timetableMap[userId]) timetableMap[userId] = [];
-              timetableMap[userId].push(cls);
-            }
-          });
-
-          setUserClassesMap({ ...classesMap, ...timetableMap });
-          setLoading(false);
-        });
-      });
-    });
-
-    return () => unsubscribeUsers();
-  }, [auth.currentUser, classes]);
-
-  // 2. Fetch Requests (Real-time)
+  // 1. Fetch ONLINE Users (Real-Time Presence)
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    // Outgoing Requests
+    // Query users who have been active recently
+    // Note: Firestore requires composite index for multiple fields. 
+    // We will fetch recent users and filter client-side for simplicity if index is missing.
+    const usersQuery = query(
+      collection(db, "users"),
+      // orderBy("lastSeen", "desc"), // simple ordering
+      // limit(50)
+    );
+
+    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+      const now = new Date();
+      const onlineThreshold = 5 * 60 * 1000; // 5 minutes
+
+      const activeUsers = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(user => {
+          // Filter out current user
+          if (user.id === auth.currentUser.uid) return false;
+
+          // Check if online or lastSeen is recent
+          if (user.isOnline) return true;
+          if (user.lastSeen?.toDate) {
+            const diff = now - user.lastSeen.toDate();
+            return diff < onlineThreshold;
+          }
+          return false;
+        });
+
+      // Transform to match existing UI structure (userName, userEmail, etc.)
+      const formattedMatches = activeUsers.map(u => ({
+        userId: u.id,
+        userName: u.name || u.email.split('@')[0], // Fallback name
+        userEmail: u.email,
+        // Random or basic match score for visual consistency if needed, else hide it
+        matchScore: 100
+      }));
+
+      setMatches(formattedMatches);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser]);
+
+  // 2. Fetch Requests (Real-time) - KEPT SAME
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
     const outgoingq = query(
       collection(db, "study_requests"),
       where("fromUser.uid", "==", auth.currentUser.uid)
     );
 
-    // Incoming Requests
     const incomingq = query(
       collection(db, "study_requests"),
       where("toUser.uid", "==", auth.currentUser.uid)
-      // Removed status filter to avoid composite index requirements
     );
 
     const unsubOutgoing = onSnapshot(outgoingq, (snap) => {
-      console.log("Outgoing Requests Snap:", snap.size);
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
@@ -95,15 +93,9 @@ const PeerCollaboration = ({ isDark, classes }) => {
     });
 
     const unsubIncoming = onSnapshot(incomingq, (snap) => {
-      console.log("Incoming Requests Snap:", snap.size);
-
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setIncomingRequests(docs.filter(req => req.status === "pending"));
 
-      // 1. Pending for UI list
-      const pending = docs.filter(req => req.status === "pending");
-      setIncomingRequests(pending);
-
-      // 2. Accepted for connection check
       const accepted = {};
       docs.filter(req => req.status === "accepted").forEach(req => {
         accepted[req.fromUser.uid] = "accepted";
@@ -113,23 +105,6 @@ const PeerCollaboration = ({ isDark, classes }) => {
 
     return () => { unsubOutgoing(); unsubIncoming(); };
   }, [auth.currentUser]);
-
-  // 3. Match Logic
-  useEffect(() => {
-    if (!auth.currentUser || allUsers.length === 0 || !classes) return;
-
-    const loadMatches = async () => {
-      const foundMatches = await findStudyPartners(
-        auth.currentUser.uid,
-        allUsers,
-        classes,
-        userClassesMap
-      );
-      setMatches(foundMatches);
-    };
-
-    loadMatches();
-  }, [auth.currentUser, allUsers, classes, userClassesMap]);
 
   // --- HANDLERS ---
   // --- HANDLERS ---
@@ -259,107 +234,74 @@ const PeerCollaboration = ({ isDark, classes }) => {
         </div>
       )}
 
-      {/* MATCHES LIST */}
+      {/* MATCHES LIST - Simple List View */}
       {matches.length === 0 ? (
         <div className={`text-center py-8 ${theme.muted}`}>
-          <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>No study partners available right now.</p>
-          <p className="text-sm mt-2">Check back when you have free time slots!</p>
+          <Users className="w-10 h-10 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">No study partners found.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {matches.slice(0, 5).map((match, index) => {
-            const outgoingStatus = sentRequests[match.userId];
-            const incomingStatus = acceptedIncoming[match.userId];
-            const isConnected = outgoingStatus === 'accepted' || incomingStatus === 'accepted';
-            const isPending = outgoingStatus === 'pending';
+        <div className={`rounded-xl border ${theme.card} overflow-hidden`}>
+          <div className="p-4 border-b border-gray-100 dark:border-gray-700">
+            <h3 className={`font-bold text-lg ${theme.text}`}>Available Students</h3>
+            <p className={`text-xs ${theme.muted}`}>{matches.length} students active now</p>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {matches.map((match, index) => {
+              const outgoingStatus = sentRequests[match.userId];
+              const incomingStatus = acceptedIncoming[match.userId];
+              const isConnected = outgoingStatus === 'accepted' || incomingStatus === 'accepted';
+              const isPending = outgoingStatus === 'pending';
 
-            return (
-              <div
-                key={match.userId}
-                className={`p-4 rounded-lg border transition-all ${isConnected
-                  ? isDark ? 'bg-green-900/10 border-green-700/50' : 'bg-green-50 border-green-200'
-                  : isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
-                  }`}
-              >
-                <div className="flex items-start justify-between mb-3">
+              return (
+                <div
+                  key={match.userId}
+                  className={`p-4 flex items-center justify-between transition-all hover:bg-gray-50 dark:hover:bg-gray-800/50`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-sm ${isDark ? 'bg-indigo-600' : 'bg-indigo-500 text-white'}`}>
+                      {match.userName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className={`font-semibold text-sm ${theme.text}`}>{match.userName}</p>
+                      <p className={`text-xs ${theme.muted}`}>{match.userEmail}</p>
+                    </div>
+                  </div>
+
+                  {/* ACTION BUTTON */}
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-sm ${isDark ? 'bg-indigo-600' : 'bg-indigo-500 text-white'
-                        }`}>
-                        {match.userName.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className={`font-semibold ${theme.text}`}>{match.userName}</p>
-                        <p className={`text-xs ${theme.muted}`}>{match.userEmail}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={`px-2 py-1 rounded-full text-xs font-semibold ${match.matchScore > 30
-                    ? isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'
-                    : isDark ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                    {match.matchScore}% Match
-                  </div>
-                </div>
-
-                {/* OVERLAPPING DETAILS (Only show if not connected for brevity, or keep showing?) --> Keeping for context */}
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  {match.overlappingSlots.length > 0 && (
-                    <div className={`text-xs p-2 rounded ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-                      <div className="flex items-center gap-1 mb-1 font-semibold opacity-70">
-                        <Clock size={12} /> Free Together
-                      </div>
-                      {match.overlappingSlots.slice(0, 1).map((s, i) => (
-                        <div key={i}>{s.startTime} ({s.duration}m)</div>
-                      ))}
-                    </div>
-                  )}
-                  {match.subjectOverlap.length > 0 && (
-                    <div className={`text-xs p-2 rounded ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-                      <div className="flex items-center gap-1 mb-1 font-semibold opacity-70">
-                        <BookOpen size={12} /> Subjects
-                      </div>
-                      <div className="truncate">{match.subjectOverlap.join(', ')}</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* ACTION BUTTON */}
-                {isConnected ? (
-                  <button
-                    onClick={() => setActiveChatPartner(match)}
-                    className={`w-full px-4 py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${isDark ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-green-500 hover:bg-green-600 text-white shadow-sm'
-                      }`}
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    Connected • Chat Now
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleSendRequest(match)}
-                    disabled={isPending || requestLoading}
-                    className={`w-full px-4 py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${isPending
-                      ? 'bg-gray-400 cursor-not-allowed text-white'
-                      : isDark
-                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200'
-                      }`}
-                  >
-                    {isPending ? (
-                      <>
-                        <Clock className="w-4 h-4 animate-pulse" /> Request Sent
-                      </>
+                    {isConnected ? (
+                      <button
+                        onClick={() => setActiveChatPartner(match)}
+                        className={`p-2 rounded-full transition-all ${isDark ? 'text-green-400 hover:bg-green-900/30' : 'text-green-600 hover:bg-green-50'}`}
+                        title="Chat"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
                     ) : (
-                      <>
-                        <Send className="w-4 h-4" /> Send Study Request
-                      </>
+                      <button
+                        onClick={() => handleSendRequest(match)}
+                        disabled={isPending || requestLoading}
+                        className={`p-2 rounded-full transition-all ${isPending
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : isDark
+                            ? 'text-indigo-400 hover:bg-indigo-900/30'
+                            : 'text-indigo-600 hover:bg-indigo-50'
+                          }`}
+                        title="Connect"
+                      >
+                        {isPending ? (
+                          <Clock className="w-5 h-5 animate-pulse" />
+                        ) : (
+                          <Send className="w-5 h-5" />
+                        )}
+                      </button>
                     )}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

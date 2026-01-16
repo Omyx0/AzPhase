@@ -10,11 +10,12 @@ import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/f
 import { detectFreeTime, getCurrentFreeTime } from '../utils/freeTimeDetector';
 import { analyzeAcademicGaps, mapFreeTimeToGap } from '../utils/academicGapAnalyzer';
 
-const SmartNotifications = ({ isDark }) => {
+const SmartNotifications = ({ isDark, classes = [] }) => {
   const [notifications, setNotifications] = useState([]);
   const [showPanel, setShowPanel] = useState(false);
-  const [classes, setClasses] = useState([]);
+  // classes is now a prop
   const [assignments, setAssignments] = useState([]);
+
   const [quizScores, setQuizScores] = useState([]);
   const panelRef = useRef(null);
 
@@ -38,18 +39,8 @@ const SmartNotifications = ({ isDark }) => {
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    // Subscribe to timetable changes
-    const classesQuery = query(
-      collection(db, "timetable"),
-      where("userId", "==", auth.currentUser.uid)
-    );
-    const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
-      const classData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClasses(classData);
-
-      // Check for new cancellations and generate notifications
-      checkForNewNotifications(classData, assignments, quizScores);
-    });
+    // Use passed classes prop instead of internal fetch
+    checkForNewNotifications(classes, assignments, quizScores);
 
     // Subscribe to assignments
     const assignmentsQuery = query(
@@ -69,7 +60,6 @@ const SmartNotifications = ({ isDark }) => {
     const unsubscribeScores = onSnapshot(scoresQuery, (snapshot) => {
       const scoreData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setQuizScores(scoreData);
-      // Re-check notifications with new score data? Optional.
     });
 
     // Check for upcoming classes (every minute)
@@ -78,12 +68,11 @@ const SmartNotifications = ({ isDark }) => {
     }, 60000); // Check every minute
 
     return () => {
-      unsubscribeClasses();
       unsubscribeAssignments();
       unsubscribeScores();
       clearInterval(interval);
     };
-  }, [auth.currentUser, assignments, quizScores]);
+  }, [auth.currentUser, assignments, quizScores, classes]);
 
   const checkForNewNotifications = async (classData, assignmentData, scoreData) => {
     const newNotifications = [];
@@ -239,8 +228,8 @@ const SmartNotifications = ({ isDark }) => {
                 >
                   <div className="flex items-start gap-3">
                     <div className={`p-2 rounded-lg ${notif.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                        notif.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                          'bg-blue-500/20 text-blue-400'
+                      notif.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-blue-500/20 text-blue-400'
                       }`}>
                       {notif.type === 'class_cancelled' && <AlertCircle className="w-4 h-4" />}
                       {notif.type === 'upcoming_class' && <Clock className="w-4 h-4" />}

@@ -5,31 +5,31 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const Chatbot = ({ isDark }) => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
-    { 
-      text: "Hello! I'm UniTime AI, your academic assistant. Ask me about study plans, schedules, or anything to boost your productivity! 🎓", 
-      sender: "ai" 
+    {
+      text: "Hello! I'm UniTime AI, your academic assistant. Ask me about study plans, schedules, or anything to boost your productivity! 🎓",
+      sender: "ai"
     },
   ]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(false);
-  
+
   const messagesEndRef = useRef(null);
   const genAIRef = useRef(null);
 
   // Initialize Google Generative AI
   useEffect(() => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    
+
     if (!apiKey) {
       console.error("❌ VITE_GEMINI_API_KEY is not set in .env.local");
       setApiError(true);
-      setMessages((prev) => [...prev, { 
-        text: "⚠️ API key not configured. Please set VITE_GEMINI_API_KEY in your .env.local file.", 
-        sender: "error" 
+      setMessages((prev) => [...prev, {
+        text: "⚠️ API key not configured. Please set VITE_GEMINI_API_KEY in your .env.local file.",
+        sender: "error"
       }]);
       return;
     }
-    
+
     genAIRef.current = new GoogleGenerativeAI(apiKey);
     console.log("✅ Gemini AI initialized successfully");
   }, []);
@@ -46,7 +46,7 @@ const Chatbot = ({ isDark }) => {
     // 1. Add user message
     const userMessage = { text: input, sender: "user" };
     setMessages((prev) => [...prev, userMessage]);
-    
+
     // Clear input and start loading
     const userInput = input;
     setInput("");
@@ -60,12 +60,12 @@ const Chatbot = ({ isDark }) => {
         "gemini-2.5-flash",        // Stable, fast, production-ready
         "gemini-2.5-flash-lite"    // Stable, faster, cost-efficient
       ];
-      
+
       let model;
       let modelName;
       for (const candidate of modelCandidates) {
         try {
-          model = genAIRef.current.getGenerativeModel({ 
+          model = genAIRef.current.getGenerativeModel({
             model: candidate,
             generationConfig: {
               maxOutputTokens: 1024,
@@ -78,7 +78,7 @@ const Chatbot = ({ isDark }) => {
           console.log(`Model ${candidate} not available, trying next...`);
         }
       }
-      
+
       if (!model) {
         throw new Error("No valid Gemini model available");
       }
@@ -94,7 +94,7 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
 
       // 4. Send message to Gemini API
       const fullPrompt = `${systemPrompt}\n\nUser: ${userInput}`;
-      
+
       let retryCount = 0;
       const maxRetries = 3;
       let result;
@@ -110,9 +110,9 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
             // Rate limited - wait and retry
             const waitTime = Math.pow(2, retryCount) * 5000; // 5s, 10s, 20s
             console.log(`Rate limited. Retrying in ${waitTime / 1000}s...`);
-            setMessages((prev) => [...prev, { 
-              text: `API rate limited. Retrying in ${waitTime / 1000}s...`, 
-              sender: "ai" 
+            setMessages((prev) => [...prev, {
+              text: `API rate limited. Retrying in ${waitTime / 1000}s...`,
+              sender: "ai"
             }]);
             await new Promise(resolve => setTimeout(resolve, waitTime));
             retryCount++;
@@ -125,17 +125,17 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
       const responseText = result.response.text();
 
       // 5. Add AI response to messages
-      const aiMessage = { 
-        text: responseText || "Sorry, I couldn't generate a response. Please try again.", 
-        sender: "ai" 
+      const aiMessage = {
+        text: responseText || "Sorry, I couldn't generate a response. Please try again.",
+        sender: "ai"
       };
       setMessages((prev) => [...prev, aiMessage]);
 
     } catch (error) {
       console.error("❌ Chat Error:", error);
-      
+
       let errorMessage = "Oops! Something went wrong. Please try again.";
-      
+
       if (error.message.includes("429")) {
         errorMessage = "⏱️ Free tier quota exceeded. Please upgrade to a paid plan at https://console.cloud.google.com/billing/overview or wait until tomorrow for the quota to reset.";
       } else if (error.message.includes("404") || error.message.includes("not found") || error.message.includes("No valid Gemini model")) {
@@ -145,7 +145,7 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
       } else if (error.message.includes("network")) {
         errorMessage = "🌐 Network error. Please check your internet connection.";
       }
-      
+
       setMessages((prev) => [...prev, { text: errorMessage, sender: "error" }]);
       setApiError(true);
     } finally {
@@ -155,7 +155,7 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
 
   return (
     <div className={`flex flex-col h-[500px] w-full max-w-md mx-auto rounded-2xl shadow-2xl overflow-hidden border ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-      
+
       {/* Header */}
       <div className="bg-indigo-600 p-4 flex items-center gap-3">
         <div className="p-2 bg-white/20 rounded-full">
@@ -173,37 +173,35 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
       {/* Messages */}
       <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${isDark ? "bg-gray-900" : "bg-gray-50"}`}>
         {messages.map((msg, index) => (
-          <div key={index} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-            {msg.sender === "ai" && (
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 flex-shrink-0 ${isDark ? "bg-gray-700" : "bg-indigo-100"}`}>
-                    <Bot size={16} className={isDark ? "text-white" : "text-indigo-600"}/>
-                </div>
+          <div key={index} className={`flex w-full ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+            {msg.sender !== "user" && (
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 flex-shrink-0 border ${isDark ? "bg-indigo-900/30 border-indigo-700/50" : "bg-white border-indigo-100 shadow-sm"}`}>
+                {msg.sender === "error" ? (
+                  <AlertCircle size={16} className="text-red-500" />
+                ) : (
+                  <Bot size={18} className="text-indigo-600" />
+                )}
+              </div>
             )}
-            <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${
-              msg.sender === "user" 
-                ? "bg-indigo-600 text-white rounded-br-none" 
+            <div className={`max-w-[80%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.sender === "user"
+                ? "bg-indigo-600 text-white rounded-br-none"
                 : msg.sender === "error"
-                ? "bg-red-100 text-red-700 border border-red-200 rounded-bl-none"
-                : isDark ? "bg-gray-800 text-gray-100 rounded-bl-none border border-gray-700" : "bg-white text-gray-800 rounded-bl-none shadow-sm border border-gray-100"
-            }`}>
+                  ? "bg-red-50 text-red-700 border border-red-200 rounded-bl-none"
+                  : isDark ? "bg-gray-800 text-gray-100 rounded-bl-none border border-gray-700" : "bg-white text-gray-800 rounded-bl-none border border-gray-100"
+              }`}>
               {msg.text}
             </div>
-            {msg.sender === "user" && (
-                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center ml-2 flex-shrink-0 overflow-hidden">
-                    <User size={16} className="text-gray-600"/>
-                </div>
-            )}
           </div>
         ))}
-        
+
         {loading && (
-          <div className="flex justify-start items-center">
-             <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 flex-shrink-0 ${isDark ? "bg-gray-700" : "bg-indigo-100"}`}>
-                    <Bot size={16} className={isDark ? "text-white" : "text-indigo-600"}/>
-             </div>
-             <div className={`px-4 py-2 rounded-full flex items-center gap-2 text-xs ${isDark ? "bg-gray-800 text-gray-400" : "bg-white text-gray-500"}`}>
-                <Loader2 className="w-3 h-3 animate-spin" /> Thinking...
-             </div>
+          <div className="flex justify-start items-center w-full">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 flex-shrink-0 border ${isDark ? "bg-indigo-900/30 border-indigo-700/50" : "bg-white border-indigo-100 shadow-sm"}`}>
+              <Bot size={18} className="text-indigo-600" />
+            </div>
+            <div className={`px-4 py-2 rounded-full flex items-center gap-2 text-xs font-medium ${isDark ? "bg-gray-800 text-gray-400" : "bg-white text-gray-500 shadow-sm border border-gray-100"}`}>
+              <Loader2 className="w-3 h-3 animate-spin text-indigo-500" /> Thinking...
+            </div>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -220,11 +218,11 @@ Keep responses concise (2-3 sentences), friendly, and motivating. If asked about
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           disabled={loading || apiError}
         />
-        <button 
-            onClick={sendMessage} 
-            disabled={loading || !input.trim() || apiError}
-            className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/30"
-            title={apiError ? "API not configured" : "Send message"}
+        <button
+          onClick={sendMessage}
+          disabled={loading || !input.trim() || apiError}
+          className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/30"
+          title={apiError ? "API not configured" : "Send message"}
         >
           <Send size={18} />
         </button>

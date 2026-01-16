@@ -9,17 +9,57 @@ import GoogleCalendar from "./GoogleCalendar";
 import AcademicManager from './AcademicManager';
 
 import AIStudyAdvisor from './AIStudyAdvisor';
+import { isValidSubject } from "../utils/subjectUtils";
 
 const Timetable = ({ isDark }) => {
   const [showTimetable, setShowTimetable] = useState(true);
   const [classes, setClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
 
+
+  // INLINED FILTER LOGIC
+  const VALID_CODES = [
+    "29242201", "29242202", "29242203", "29242204", "29242205",
+    "29242206", "29242207", "29242208", "29242209", "29242210",
+    "29242211", "29242212", "NECXXXXX", "SIP2XXXX"
+  ];
+  const SUBJECT_MAP = [
+    { keywords: ["data science lab", "science lab"], code: "29242206" },
+    { keywords: ["algorithms lab", "algo lab"], code: "29242207" },
+    { keywords: ["data science", "data sci"], code: "29242201" },
+    { keywords: ["design and analysis", "algorithms", "daa", "dsa"], code: "29242202" },
+    { keywords: ["theory of computation", "toc"], code: "29242203" },
+    { keywords: ["communication", "networks", "cn"], code: "29242204" },
+    { keywords: ["design pattern", "patterns"], code: "29242205" },
+    { keywords: ["competitive programming", "cp"], code: "29242208" },
+    { keywords: ["proficiency"], code: "29242209" },
+    { keywords: ["macro project", "project-ii"], code: "29242210" },
+    { keywords: ["project management", "economics"], code: "29242211" },
+    { keywords: ["mandatory workshop", "intellectual"], code: "29242212" },
+    { keywords: ["novel engaging", "nec"], code: "NECXXXXX" },
+    { keywords: ["internship", "sip"], code: "SIP2XXXX" }
+  ];
+
+  const getSubjectCode = (str) => {
+    if (!str) return null;
+    const clean = str.trim();
+    const lower = clean.toLowerCase();
+    const direct = clean.match(/(\d{8}|NECXXXXX|SIP2XXXX)/);
+    if (direct) return direct[0];
+    const match = SUBJECT_MAP.find(m => m.keywords.some(k => lower.includes(k)));
+    return match ? match.code : null;
+  };
+
   useEffect(() => {
     if (!auth.currentUser) return;
     const q = query(collection(db, "timetable"), where("userId", "==", auth.currentUser.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const filtered = allData.filter(cls => {
+        const code = getSubjectCode(cls.subject);
+        return code && VALID_CODES.includes(code);
+      });
+      setClasses(filtered);
       setLoadingClasses(false);
     });
     return () => unsubscribe();
@@ -65,26 +105,7 @@ const Timetable = ({ isDark }) => {
               {/* AI Analysis Section */}
 
 
-              {/* Weekly Attendance (Read Only) */}
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><Clock className="w-4 h-4" /> Weekly Attendance Tracking</h4>
-                <div className="space-y-2">
-                  {loadingClasses ? (<div className="text-center py-4 opacity-50">Loading classes...</div>) : classes.length > 0 ? classes.map((cls) => (
-                    <div key={cls.id} className={`p-3 rounded-lg border ${cls.attended ? isDark ? 'bg-green-900/20 border-green-700' : 'bg-green-50 border-green-200' : isDark ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200'}`}>
-                      <div className="flex justify-between items-center">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-3 h-3 rounded-full ${cls.attended ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                            <span className="font-medium">{cls.subject}</span>
-                          </div>
-                          <div className="text-sm opacity-70 mt-1">{cls.day} • {cls.time}</div>
-                        </div>
-                        <div className="flex items-center gap-1 text-sm opacity-70"><MapPin className="w-4 h-4" /> {cls.room}</div>
-                      </div>
-                    </div>
-                  )) : (<p className="text-center py-4 opacity-50">No classes scheduled in database.</p>)}
-                </div>
-              </div>
+              {/* Weekly Attendance Removed */}
             </div>
           )}
         </div>

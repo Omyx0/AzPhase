@@ -3,7 +3,7 @@ import { db, auth } from "../firebase";
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from "firebase/firestore";
 import { TrendingUp, Clock, Target, Award, BarChart3, PieChart, Users, Sparkles } from "lucide-react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import GoogleCalendar from "./GoogleCalendar";
+// GoogleCalendar import removed
 import LearningContinuityDashboard from "./LearningContinuityDashboard";
 import PeerCollaboration from "./PeerCollaboration";
 
@@ -250,19 +250,15 @@ export default function Analytics({ isDark, userType = 'student' }) {
         />
       )}
 
-      {/* Peer Collaboration - For Students Only */}
+      {/* Peer Collaboration - Real Time Online Users */}
       {userType === 'student' && (
         <PeerCollaboration
           isDark={isDark}
-          classes={classes}
+          classes={classes} // Still passing classes though mostly unused now, kept for compatibility
         />
       )}
 
-      {/* Google Calendar */}
-      <div className="mt-8">
-        <h2 className={`text-xl font-semibold mb-4 ${textClass}`}>Your Schedule</h2>
-        <GoogleCalendar isDark={isDark} />
-      </div>
+      {/* Google Calendar Removed */}
     </div>
   );
 }

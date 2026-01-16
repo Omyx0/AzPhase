@@ -7,6 +7,9 @@ export const analyzeAcademicGaps = async (studentData, assignments, classes, qui
   const gaps = [];
 
   // 1. Analyze missed lectures
+  // 1. Analyze missed lectures - DISABLED
+  // (Cannot determine missed lectures from a static weekly schedule without historical data)
+  /*
   const missedLectures = classes.filter(cls => 
     cls.attended === false || cls.attended === undefined
   );
@@ -36,10 +39,11 @@ export const analyzeAcademicGaps = async (studentData, assignments, classes, qui
       });
     }
   });
+  */
 
   // 2. Analyze low quiz/test scores
   if (quizScores && quizScores.length > 0) {
-    const lowScores = quizScores.filter(quiz => 
+    const lowScores = quizScores.filter(quiz =>
       quiz.score < 60 || (quiz.maxScore && (quiz.score / quiz.maxScore) < 0.6)
     );
 

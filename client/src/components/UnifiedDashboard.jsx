@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  Clock, Sparkles, Brain, Loader2, BookOpen, Plus, TrendingUp, AlertTriangle
+  Clock, Sparkles, Brain, Loader2, BookOpen, Plus, TrendingUp, AlertTriangle, Users
 } from "lucide-react";
 import { db, auth } from "../firebase";
 import { collection, query, onSnapshot, where, addDoc } from "firebase/firestore";
@@ -67,11 +67,48 @@ const UnifiedDashboard = ({ isDark }) => {
 
       const merged = [...currentPersonal, ...currentTeacher];
 
-      // Deduplicate by ID just in case
-      const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
+      // DEDUPLICATION LOGIC
+      // Key: "${day}-${normalizedTime}" -> Class Object
+      const classMap = new Map();
+
+      // Helper to normalize time to 24-hour HH:MM format for strict comparison
+      const normalizeTime = (t) => {
+        if (!t) return "00:00";
+        const clean = t.trim().toLowerCase();
+
+        // Extract numbers
+        const timePart = clean.replace(/[^\d:]/g, '');
+        let [h, m] = timePart.split(':').map(Number);
+        if (isNaN(h)) return "00:00";
+        if (isNaN(m)) m = 0;
+
+        // Handle AM/PM
+        if (clean.includes('pm') && h !== 12) h += 12;
+        if (clean.includes('am') && h === 12) h = 0;
+
+        // Return HH:MM
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      };
+
+      merged.forEach(cls => {
+        const key = `${cls.day}-${normalizeTime(cls.time)}`;
+
+        if (classMap.has(key)) {
+          const existing = classMap.get(key);
+          // If current class is TEACHER class and existing is NOT, override.
+          // Logic: Official Teacher schedule > Personal scanned schedule
+          if (cls.isTeacherClass && !existing.isTeacherClass) {
+            classMap.set(key, cls);
+          }
+          // If both are same source type, first one stays (or logic can be refined)
+        } else {
+          classMap.set(key, cls);
+        }
+      });
+
+      const unique = Array.from(classMap.values());
 
       // Sort
-      // Helper to parse time for sorting
       const parseTime = (str) => {
         if (!str) return 0;
         const [t, p] = str.split(' ');
@@ -85,7 +122,7 @@ const UnifiedDashboard = ({ isDark }) => {
 
       setUpcomingClasses(unique);
 
-      // Recalculate everything driven by 'upcomingClasses'
+      // Recalculate metrics
       const cancelledCount = unique.filter(c => c.isCancelled).length;
       setMetrics(prev => ({
         ...prev,
@@ -93,7 +130,7 @@ const UnifiedDashboard = ({ isDark }) => {
         cancelled: cancelledCount
       }));
 
-      setFreeTimeSlots(detectFreeTime(unique));
+      setFreeTimeSlots(unique.filter(c => c.isCancelled));
       setCurrentFreeTime(getCurrentFreeTime(unique));
       setLoading(false);
     };
@@ -344,69 +381,46 @@ const UnifiedDashboard = ({ isDark }) => {
 
 
 
-        {/* --- SCHEDULE LIST (Existing) --- */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className={`text-lg font-bold ${textPrimary}`}>Upcoming Schedule</h2>
-            {planningId && (
-              <div className="flex items-center gap-2 text-indigo-500 animate-pulse">
-                <Brain size={16} />
-                <span className="text-xs font-semibold">AI Planning...</span>
-              </div>
-            )}
-          </div>
+        {/* --- SCHEDULE LIST --- */}
+        <div className="space-y-8">
 
-          {loading ? (
-            <div className={`p-12 rounded-xl border border-dashed ${isDark ? 'border-gray-700' : 'border-gray-200'} flex flex-col items-center justify-center text-center`}>
-              <Loader2 className={`w-8 h-8 mb-4 animate-spin ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
-              <p className={textSecondary}>Loading your schedule...</p>
-            </div>
-          ) : upcomingClasses.length === 0 ? (
-            <div className={`p-12 rounded-xl border border-dashed ${isDark ? 'border-gray-700' : 'border-gray-200'} text-center ${textSecondary}`}>
-              <Clock className="w-12 h-12 mx-auto mb-3 opacity-20" />
-              <p>No classes found for today.</p>
-              <p className="text-sm mt-2">Time to relax or catch up on studies!</p>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {upcomingClasses.map((cls) => (
-                <div key={cls.id} className={`p-5 rounded-xl border transition-all hover:shadow-md ${cls.isCancelled ? (isDark ? 'border-red-500/40 bg-red-500/5' : 'border-red-300 bg-red-50/50') : card
-                  }`}>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <h3 className={`font-bold text-lg mb-1 ${textPrimary} ${cls.isCancelled ? 'line-through opacity-60' : ''
-                        }`}>
-                        {cls.subject}
-                      </h3>
-                      <div className={`flex items-center gap-2 text-sm ${textSecondary}`}>
-                        <Clock size={14} />
-                        <span>{cls.time}</span>
-                        <span>•</span>
-                        <span>{cls.day}</span>
-                        {cls.room && (
-                          <>
-                            <span>•</span>
-                            <span>{cls.room}</span>
-                          </>
-                        )}
+          {/* 1. ONGOING / CANCELLED CLASSES SECTION */}
+          {upcomingClasses.some(c => c.isCancelled) && (
+            <div className="opacity-90">
+              <h2 className={`text-lg font-bold mb-4 flex items-center gap-2 ${textPrimary}`}>
+                <Clock className="text-blue-500" /> Ongoing Classes
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {upcomingClasses.filter(c => c.isCancelled).map((cls) => (
+                  <div key={cls.id} className={`p-5 rounded-xl border border-dashed relative overflow-hidden transition-all ${isDark ? 'bg-red-900/10 border-red-800/30' : 'bg-red-50 border-red-200'}`}>
+
+                    {/* Cancelled Badge Watermark */}
+                    <div className="absolute top-2 right-2 opacity-10 rotate-12 pointer-events-none">
+                      <span className={`text-4xl font-bold uppercase ${isDark ? 'text-red-500' : 'text-red-600'}`}>Cancelled</span>
+                    </div>
+
+                    <div className="flex justify-between items-start mb-3 relative z-10">
+                      <div>
+                        <h3 className={`font-bold text-lg mb-1 line-through opacity-70 ${textPrimary}`}>{cls.subject}</h3>
+                        <div className={`flex items-center gap-2 text-sm opacity-70 ${textSecondary}`}>
+                          <Clock size={14} />
+                          <span>{cls.time}</span>
+                          <span>•</span>
+                          <span>{cls.day}</span>
+                        </div>
+                        <span className={`inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded ${isDark ? 'bg-red-900/40 text-red-300' : 'bg-red-100 text-red-700'}`}>
+                          CANCELLED
+                        </span>
                       </div>
                     </div>
-                    {cls.isCancelled && (
-                      <span className={`ml-3 text-xs font-bold px-2.5 py-1 rounded ${isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
-                        }`}>
-                        CANCELLED
-                      </span>
-                    )}
-                  </div>
 
-                  {/* AI Plan Result */}
-                  {cls.isCancelled && (
-                    <div className={`mt-4 p-3 rounded-lg border ${isDark ? 'bg-red-900/10 border-red-500/20' : 'bg-red-50 border-red-100'}`}>
+                    {/* Plan Now Action for Cancelled Classes */}
+                    <div className={`mt-4 p-3 rounded-lg border backdrop-blur-sm ${isDark ? 'bg-gray-900/50 border-gray-700' : 'bg-white/60 border-gray-100'}`}>
                       {aiPlans[cls.id] ? (
                         <div className="animate-in fade-in">
                           <div className="flex items-center gap-2 mb-1.5">
                             <Sparkles className="w-4 h-4 text-indigo-500" />
-                            <span className={`text-sm font-bold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>AI Plan:</span>
+                            <span className={`text-sm font-bold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>AI Utilized Plan:</span>
                           </div>
                           <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{aiPlans[cls.id]}</p>
                         </div>
@@ -415,14 +429,14 @@ const UnifiedDashboard = ({ isDark }) => {
                           <div className="flex items-center gap-2">
                             <Brain className={`w-5 h-5 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
                             <div className="text-sm">
-                              <span className={`font-bold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>Free Time!</span>
-                              <p className={`text-xs mt-0.5 ${textSecondary}`}>Utilize this hour?</p>
+                              <span className={`font-bold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>Free Time Found!</span>
+                              <p className={`text-xs mt-0.5 ${textSecondary}`}>Use this {cls.time} slot wisely?</p>
                             </div>
                           </div>
                           <button
                             onClick={() => handlePlanFreeTime(cls)}
                             disabled={planningId === cls.id}
-                            className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md disabled:opacity-50"
                           >
                             {planningId === cls.id ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
                             Plan Now
@@ -430,11 +444,165 @@ const UnifiedDashboard = ({ isDark }) => {
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              ))}
+
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+
+
+
+          {/* 1. MY COURSES / SUBJECT WISE SCHEDULE */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-xl font-bold ${textPrimary}`}>My Courses</h2>
+            </div>
+
+            {loading ? (
+              <div className={`p-12 rounded-xl border border-dashed ${isDark ? 'border-gray-700' : 'border-gray-200'} flex flex-col items-center justify-center text-center`}>
+                <Loader2 className={`w-8 h-8 mb-4 animate-spin ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                <p className={textSecondary}>Loading course details...</p>
+              </div>
+            ) : upcomingClasses.length === 0 ? (
+              <div className={`p-12 rounded-xl border border-dashed ${isDark ? 'border-gray-700' : 'border-gray-200'} text-center ${textSecondary}`}>
+                <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p>No enrolled courses found.</p>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {(() => {
+                  // GROUPING LOGIC
+                  const courses = {};
+
+                  // SMART MAP: Name Keywords -> Code
+                  const SUBJECT_MAP = [
+                    { keywords: ["data science lab", "science lab"], code: "29242206" }, // Lab first specific
+                    { keywords: ["algorithms lab", "algo lab"], code: "29242207" },
+                    { keywords: ["data science", "data sci"], code: "29242201" },
+                    { keywords: ["design and analysis", "algorithms", "daa", "dsa"], code: "29242202" },
+                    { keywords: ["theory of computation", "toc"], code: "29242203" },
+                    { keywords: ["communication", "networks", "cn"], code: "29242204" },
+                    { keywords: ["design pattern", "patterns"], code: "29242205" },
+                    { keywords: ["competitive programming", "cp"], code: "29242208" },
+                    { keywords: ["proficiency"], code: "29242209" },
+                    { keywords: ["macro project", "project-ii"], code: "29242210" },
+                    { keywords: ["project management", "economics"], code: "29242211" },
+                    { keywords: ["mandatory workshop", "intellectual"], code: "29242212" },
+                    { keywords: ["novel engaging", "nec"], code: "NECXXXXX" },
+                    { keywords: ["internship", "sip"], code: "SIP2XXXX" }
+                  ];
+
+                  const VALID_CODES = [
+                    "29242201", "29242202", "29242203", "29242204", "29242205",
+                    "29242206", "29242207", "29242208", "29242209", "29242210",
+                    "29242211", "29242212", "NECXXXXX", "SIP2XXXX"
+                  ];
+
+                  upcomingClasses.forEach(cls => {
+                    if (cls.isCancelled) return;
+
+                    // 1. Normalize
+                    const cleanSubject = cls.subject ? cls.subject.trim() : "Unknown Course";
+                    const lowerSub = cleanSubject.toLowerCase();
+
+                    // 2. Smart Extraction
+                    let subjectCode = null;
+
+                    // A: Is code already in string?
+                    const codeMatch = cleanSubject.match(/(\d{8}|NECXXXXX|SIP2XXXX)/);
+                    if (codeMatch) {
+                      subjectCode = codeMatch[0];
+                    } else {
+                      // B: Map by Name
+                      const match = SUBJECT_MAP.find(m => m.keywords.some(k => lowerSub.includes(k)));
+                      if (match) subjectCode = match.code;
+                    }
+
+                    // 3. STRICT FILTER
+                    if (!subjectCode || !VALID_CODES.includes(subjectCode)) {
+                      return; // Skip if not valid
+                    }
+
+                    // 3. Generate Unique Key
+                    // If code exists, that IS the key. 
+                    // If not, use the full trimmed name to avoid merging unrelated non-coded subjects.
+                    const key = subjectCode ? subjectCode : cleanSubject;
+
+                    if (!courses[key]) {
+                      courses[key] = {
+                        code: subjectCode || '',
+                        // If code exists, strip it from name for cleaner display
+                        name: subjectCode ? cleanSubject.replace(subjectCode, '').replace(/^[ -]+|[ -]+$/g, '').trim() : cleanSubject,
+                        faculty: cls.teacherName || 'Self Schedule',
+                        type: cleanSubject.toLowerCase().includes('lab') ? 'LAB' : 'THEORY',
+                        schedule: [],
+                        totalClasses: 0
+                      };
+                    }
+
+                    // 4. Add Slot to Schedule
+                    // Prevent duplicate slots if data has duplicates (same day/time)
+                    const alreadyExists = courses[key].schedule.some(s => s.day === cls.day && s.time === cls.time);
+                    if (!alreadyExists) {
+                      courses[key].schedule.push({ day: cls.day, time: cls.time, room: cls.room });
+                      courses[key].totalClasses++;
+                    }
+                  });
+
+                  return Object.values(courses).map((course, idx) => (
+                    <div key={idx} className={`rounded-xl overflow-hidden border shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 ${card}`}>
+
+                      {/* CARD HEADER */}
+                      <div className="p-4 flex justify-between items-start border-b border-gray-100 dark:border-gray-700">
+                        <div>
+                          <h3 className={`font-bold text-xl ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{course.code}</h3>
+                          <p className={`font-semibold text-sm line-clamp-2 h-10 ${textPrimary}`}>{course.name}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${course.type === 'LAB'
+                          ? isDark ? 'bg-green-900/40 text-green-400' : 'bg-green-100 text-green-700'
+                          : isDark ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                          {course.type}
+                        </span>
+                      </div>
+
+                      {/* PROGRESS BAR (Mock Attendance/Progress) */}
+                      <div className="px-4 py-3">
+                        <div className="flex justify-between text-xs mb-1.5 opacity-80">
+                          <span className={textSecondary}>Weekly Load</span>
+                          <span className={`font-bold ${textPrimary}`}>{course.totalClasses} Sessions</span>
+                        </div>
+                        <div className={`w-full h-1.5 rounded-full ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                          <div className={`h-1.5 rounded-full ${isDark ? 'bg-indigo-500' : 'bg-indigo-600'}`} style={{ width: '100%' }}></div>
+                        </div>
+                      </div>
+
+                      {/* SCHEDULE LIST */}
+                      <div className={`px-4 py-3 border-t border-b ${isDark ? 'border-gray-700/50' : 'border-gray-100'} bg-opacity-50 ${isDark ? 'bg-gray-800/50' : 'bg-gray-50/50'}`}>
+                        <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${textSecondary}`}>Weekly Schedule</p>
+                        <ul className="space-y-2">
+                          {course.schedule.map((slot, i) => (
+                            <li key={i} className="flex justify-between items-center text-sm">
+                              <span className={`font-medium ${textPrimary}`}>{slot.day}</span>
+                              <span className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{slot.time}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Footer Removed */}
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+
+
+
+
         </div>
 
         {/* SMART FREE TIME DETECTION */}
@@ -446,37 +614,31 @@ const UnifiedDashboard = ({ isDark }) => {
             </div>
             <div className="space-y-3">
               {freeTimeSlots.slice(0, 3).map((slot, idx) => {
-                const mappedGap = mapFreeTimeToGap(slot, academicGaps);
+                // Determine display values based on whether it's a raw class or smart slot
+                const location = slot.room || (slot.context ? slot.context.location : 'Campus');
+                const timeStr = slot.time || (slot.startTime ? `${slot.startTime} - ${slot.endTime}` : 'N/A');
+                const duration = "60"; // Default to 60 for cancelled class
+                const workload = "Medium";
+
                 return (
                   <div key={idx} className={`p-4 rounded-lg border ${isDark ? 'bg-indigo-900/20 border-indigo-700' : 'bg-indigo-50 border-indigo-200'}`}>
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <p className={`font-semibold ${textPrimary}`}>
-                          {slot.freeTimeDuration} min free ({slot.startTime} - {slot.endTime})
+                          {duration} min free • {timeStr}
                         </p>
                         <p className={`text-sm mt-1 ${textSecondary}`}>
-                          📍 {slot.context.location} • 📚 Workload: {slot.context.dayWorkloadLevel}
+                          📍 {location} • 📚 Workload: {workload}
                         </p>
-                        {slot.context.previousSubject && slot.context.nextSubject && (
-                          <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                            Between: {slot.context.previousSubject} → {slot.context.nextSubject}
-                          </p>
-                        )}
+                        <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                          {slot.subject} (Cancelled)
+                        </p>
                       </div>
-                      <span className={`ml-3 text-xs px-2 py-1 rounded whitespace-nowrap ${slot.type === 'cancelled'
-                        ? isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
-                        : isDark ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
-                        }`}>
-                        {slot.type === 'cancelled' ? 'Cancelled' : 'Gap'}
+                      <span className={`ml-3 text-xs px-2 py-1 rounded whitespace-nowrap ${isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'}`}>
+                        Cancelled
                       </span>
                     </div>
-                    {mappedGap && (
-                      <div className={`mt-3 p-3 rounded-lg ${isDark ? 'bg-yellow-900/20 border border-yellow-700/50' : 'bg-yellow-50 border border-yellow-200'}`}>
-                        <p className={`text-sm font-medium ${isDark ? 'text-yellow-300' : 'text-yellow-800'}`}>
-                          📚 Recommended: {mappedGap.insight}
-                        </p>
-                      </div>
-                    )}
+
                   </div>
                 );
               })}

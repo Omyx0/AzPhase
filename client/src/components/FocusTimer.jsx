@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Pause, Save, RotateCcw, ChevronDown, Clock } from "lucide-react";
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from "firebase/firestore";
+import { isValidSubject, getDisplayName } from "../utils/subjectUtils";
 
 const FocusTimer = ({ isDark }) => {
   const [time, setTime] = useState(0);
@@ -14,11 +15,60 @@ const FocusTimer = ({ isDark }) => {
   useEffect(() => {
     if (!auth.currentUser) return;
     const q = query(collection(db, "timetable"), where("userId", "==", auth.currentUser.uid));
+
+
+
+    // ... inside effect ...
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedSubjects = snapshot.docs.map(doc => doc.data().subject);
-      // Unique subjects only
-      const uniqueSubjects = [...new Set(fetchedSubjects)].filter(s => s && s.trim() !== "");
+
+      // INLINED HELPER
+      const getCode = (str) => {
+        if (!str) return null;
+        const clean = str.trim();
+        const lower = clean.toLowerCase();
+        const direct = clean.match(/(\d{8}|NECXXXXX|SIP2XXXX)/);
+        if (direct) return direct[0];
+        // Simple keywords check
+        const map = [
+          { k: ["data science lab", "science lab"], c: "29242206" },
+          { k: ["algorithms lab", "algo lab"], c: "29242207" },
+          { k: ["data science", "data sci"], c: "29242201" },
+          { k: ["design and analysis", "algorithms", "daa", "dsa"], c: "29242202" },
+          { k: ["theory of computation", "toc"], c: "29242203" },
+          { k: ["communication", "networks", "cn"], c: "29242204" },
+          { k: ["design pattern", "patterns"], c: "29242205" },
+          { k: ["competitive programming", "cp"], c: "29242208" },
+          { k: ["proficiency"], c: "29242209" },
+          { k: ["macro project", "project-ii"], c: "29242210" },
+          { k: ["project management", "economics"], c: "29242211" },
+          { k: ["mandatory workshop", "intellectual"], c: "29242212" },
+          { k: ["novel engaging", "nec"], c: "NECXXXXX" },
+          { k: ["internship", "sip"], c: "SIP2XXXX" }
+        ];
+        const m = map.find(x => x.k.some(kw => lower.includes(kw)));
+        return m ? m.c : null;
+      };
+
+      const VALID = [
+        "29242201", "29242202", "29242203", "29242204", "29242205",
+        "29242206", "29242207", "29242208", "29242209", "29242210",
+        "29242211", "29242212", "NECXXXXX", "SIP2XXXX"
+      ];
+
+      // Filter & Format
+      const uniqueSubjects = [...new Set(fetchedSubjects)]
+        .filter(s => {
+          const c = getCode(s);
+          return c && VALID.includes(c);
+        })
+        .map(s => {
+          const c = getCode(s);
+          return s.includes(c) ? s : `${c} - ${s}`;
+        });
+
       setSubjects(uniqueSubjects.length > 0 ? uniqueSubjects : ["General Study"]);
+
       if (!subject && uniqueSubjects.length > 0) {
         setSubject(uniqueSubjects[0]);
       } else if (!subject) {
